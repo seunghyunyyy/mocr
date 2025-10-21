@@ -1,4 +1,4 @@
-import numpy as np
+from common.xp import xp as np
 from common.layers import Convolution, Relu, Pooling, SoftmaxWithLoss
 
 class WordCNN:
@@ -45,6 +45,7 @@ class WordCNN:
         return scores
 
     def loss(self, x, t):
+        x = np.asarray(x); t = np.asarray(t)
         scores = self.predict(x)
         return self.last_layer.forward(scores, t)
 
@@ -58,6 +59,7 @@ class WordCNN:
         return float(np.mean([t[i] in idx[i] for i in range(len(t))]))
 
     def gradient(self, x, t):
+        x = np.asarray(x); t = np.asarray(t)
         # forward
         z = self._forward_conv(x)        # (B,C,H,W)
         B, C, H, W = z.shape
@@ -72,7 +74,7 @@ class WordCNN:
         df  = ds.dot(self.params['W4'].T)  # (B,C)
 
         # backward - GAP: 평균 역전파 = 균등 분배
-        dz = df[:, :, None, None] / (H * W)  # (B,C,1,1) broadcast
+        dz = np.ones_like(z) * (df[:, :, None, None] / (H * W))  # (B,C,H,W)
 
         # backward - conv stack (역순)
         for layer in self.layers[::-1]:

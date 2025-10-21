@@ -1,6 +1,7 @@
 import argparse, os, glob, json, numpy as np
 from PIL import Image
 from wordcnn.model import WordCNN
+from tqdm import tqdm
 
 def crop_from_quad(img, xs, ys, pad=2):
     x1, x2 = max(0, min(xs)-pad), min(img.width, max(xs)+pad)
@@ -32,13 +33,14 @@ def main(args):
 
     out_lines = ["file,x1,y1,w,h,pred,prob"]
     pngs = sorted(glob.glob(os.path.join(args.img_dir, "*.png")))
-    for ip in pngs:
+    for ip in tqdm(pngs, desc="infer png"):
         jp = ip[:-4] + ".json"
         if not os.path.exists(jp): continue
         img = Image.open(ip).convert("L")
         with open(jp, "r", encoding="utf-8") as f:
             j = json.load(f)
-        for b in j.get("bbox", []):
+        bboxes = j.get("bbox", [])
+        for b in bboxes:
             xs, ys = b.get("x", []), b.get("y", [])
             if len(xs) != 4 or len(ys) != 4:
                 continue
@@ -48,7 +50,8 @@ def main(args):
             x = (x-0.5)/0.5
             x = x[None, None, :, :]  # (1,1,H,W)
             logits = net.predict(x)
-            prob = softmax(logits)[0]
+            from common.xp import xp as np
+            prob = asnumpy(softmax(logits))[0]
             pred_id = int(np.argmax(prob))
             pmax = float(prob[pred_id])
             pred = id2word.get(pred_id, "<UNK>")

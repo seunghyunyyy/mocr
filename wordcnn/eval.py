@@ -1,5 +1,6 @@
 import argparse, os, json, numpy as np
 from wordcnn.model import WordCNN
+from tqdm import tqdm
 
 def load_params(path):
     z = np.load(path)
@@ -14,8 +15,15 @@ def main(args):
     net.params.update(load_params(args.ckpt))
 
     # Top-1 / Top-5
-    acc1 = net.accuracy(X, y, topk=1)
-    acc5 = net.accuracy(X, y, topk=5)
+    bs = 1024
+    pred_top1 = 0; pred_top5 = 0; tot = 0
+    for i in tqdm(range(0, len(y), bs), desc="eval"):
+        xb = X[i:i+bs]; yb = y[i:i+bs]
+        pred_top1 += (net.accuracy(xb, yb, topk=1) * len(yb))
+        pred_top5 += (net.accuracy(xb, yb, topk=5) * len(yb))
+        tot += len(yb)
+    acc1 = pred_top1 / tot
+    acc5 = pred_top5 / tot
     print(f"[eval] Top-1={acc1:.4f}  Top-5={acc5:.4f}")
 
     # 길이 구간/문자유형 분석(간단)
