@@ -1,5 +1,6 @@
 import argparse, json, glob, unicodedata, os
 from collections import Counter
+from tqdm import tqdm
 
 def normalize_token(s: str) -> str:
     s = s.strip()
@@ -9,7 +10,7 @@ def normalize_token(s: str) -> str:
 def main(args):
     json_paths = sorted(glob.glob(os.path.join(args.json_dir, "*.json")))
     freq = Counter()
-    for jp in json_paths:
+    for jp in tqdm(json_paths, desc="scan json (build_vocab)"):
         with open(jp, "r", encoding="utf-8") as f:
             j = json.load(f)
         for b in j.get("bbox", []):
@@ -40,7 +41,7 @@ def main(args):
     with open(os.path.join(args.out_dir, "stats.csv"), "w", encoding="utf-8") as f:
         f.write("word,count,cum_ratio\n")
         cum = 0
-        for i, (w, c) in enumerate(items):
+        for i, (_, c) in enumerate(tqdm(items, desc="cum coverage"), 1):
             cum += c
             f.write(f"{w},{c},{cum/total:.6f}\n")
 

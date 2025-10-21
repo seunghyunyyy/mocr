@@ -2,6 +2,7 @@ import argparse, os, glob, json, math
 import numpy as np
 from PIL import Image
 import unicodedata
+from tqdm import tqdm
 
 def normalize_token(s: str) -> str:
     return unicodedata.normalize("NFC", s.strip())
@@ -28,13 +29,15 @@ def resize_h_pad_w(img: Image.Image, H=32, Wmax=256):
 def process_split(split_dir, word2id, out_x, out_y, H=32, Wmax=256):
     img_paths = sorted(glob.glob(os.path.join(split_dir, "*.png")))
     X, y = [], []
-    for ip in img_paths:
+    pbar = tqdm(img_paths, desc=f"{os.path.basename(split_dir)} png")
+    for ip in pbar:
         jp = ip[:-4] + ".json"
         if not os.path.exists(jp): continue
         img = Image.open(ip).convert("L")
         with open(jp, "r", encoding="utf-8") as f:
             j = json.load(f)
-        for b in j.get("bbox", []):
+        bboxes = j.get("bbox", [])
+        for b in bboxes:
             word = normalize_token(str(b.get("data", "")))
             if word not in word2id:
                 continue  # 폐어휘: 상위 N에 없는 단어 제외
