@@ -1,5 +1,4 @@
-# coding: utf-8
-import numpy as np
+from common.xp import xp as np
 
 
 def smooth_curve(x):
@@ -51,6 +50,7 @@ def im2col(input_data, filter_h, filter_w, stride=1, pad=0):
     -------
     col : 2차원 배열
     """
+    input_data = np.asarray(input_data)
     N, C, H, W = input_data.shape
     out_h = (H + 2*pad - filter_h)//stride + 1
     out_w = (W + 2*pad - filter_w)//stride + 1
@@ -84,6 +84,7 @@ def col2im(col, input_shape, filter_h, filter_w, stride=1, pad=0):
     -------
     img : 변환된 이미지들
     """
+    col = np.asarray(col)
     N, C, H, W = input_shape
     out_h = (H + 2*pad - filter_h)//stride + 1
     out_w = (W + 2*pad - filter_w)//stride + 1

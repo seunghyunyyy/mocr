@@ -1,5 +1,4 @@
-# coding: utf-8
-import numpy as np
+from common.xp import xp as np
 from common.functions import *
 from common.util import im2col, col2im
 
@@ -214,6 +213,7 @@ class Convolution:
         self.db = None
 
     def forward(self, x):
+        x = np.asarray(x)
         FN, C, FH, FW = self.W.shape
         N, C, H, W = x.shape
         out_h = 1 + int((H + 2 * self.pad - FH) / self.stride)
@@ -256,6 +256,7 @@ class Pooling:
         self.arg_max = None
 
     def forward(self, x):
+        x = np.asarray(x)
         N, C, H, W = x.shape
         out_h = int(1 + (H - self.pool_h) / self.stride)
         out_w = int(1 + (W - self.pool_w) / self.stride)
