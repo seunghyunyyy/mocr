@@ -1,19 +1,18 @@
+# common/xp.py
+# coding: utf-8
 import os
-_USE_CUPY = os.getenv("USE_CUPY", "0") == "1"
 
-try:
-    if _USE_CUPY:
-        import cupy as xp  # GPU
-    else:
-        import numpy as xp  # CPU
-except Exception:
-    import numpy as xp      # 폴백
+USE_CUPY = os.getenv("USE_CUPY", "0") == "1"
+TARGET_DTYPE = os.getenv("MOCR_DTYPE", "float16").lower()  # "float16" or "float32"
 
-def asnumpy(a):
-    try:
-        import cupy
-        if isinstance(a, cupy.ndarray):
-            return cupy.asnumpy(a)
-    except Exception:
-        pass
-    return a
+if USE_CUPY:
+    import cupy as xp
+    def asnumpy(x): return xp.asnumpy(x)
+else:
+    import numpy as xp
+    def asnumpy(x): return x
+
+DTYPE = xp.float16 if TARGET_DTYPE == "float16" else xp.float32
+
+def backend_name() -> str:
+    return "cupy" if USE_CUPY else "numpy"

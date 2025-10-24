@@ -1,50 +1,37 @@
-from common.xp import xp as np
+# common/functions.py
+# coding: utf-8
+import numpy as np
 
-def identity_function(x):
-    return x
+def stable_softmax(x: np.ndarray) -> np.ndarray:
+    """Row-wise 안정화된 softmax (log-sum-exp)."""
+    x = x - x.max(axis=1, keepdims=True)
+    e = np.exp(x)
+    return e / (e.sum(axis=1, keepdims=True) + 1e-12)
 
-def step_function(x):
-    return np.array(x > 0, dtype=np.int)
+def cross_entropy_from_logits(logits: np.ndarray, t: np.ndarray, eps: float = 0.1) -> float:
+    """
+    안정화된 softmax + 라벨 스무딩 CE.
+    logits: (B, C)
+    t: (B,) int labels  또는  (B, C) one-hot
+    eps: 0.0~0.2 권장
+    """
+    p = stable_softmax(logits)  # (B, C)
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-def sigmoid_grad(x):
-    return (1.0 - sigmoid(x)) * sigmoid(x)
-
-def relu(x):
-    return np.maximum(0, x)
-
-def relu_grad(x):
-    grad = np.zeros(x)
-    grad[x>=0] = 1
-    return grad
-
-def softmax(x):
-    if x.ndim == 2:
-        x = x.T
-        x = x - np.max(x, axis=0)
-        y = np.exp(x) / np.sum(np.exp(x), axis=0)
-        return y.T 
-
-    x = x - np.max(x) # 오버플로 대책
-    return np.exp(x) / np.sum(np.exp(x))
-
-def mean_squared_error(y, t):
-    return 0.5 * np.sum((y-t)**2)
-
-def cross_entropy_error(y, t):
-    if y.ndim == 1:
-        t = t.reshape(1, t.size)
-        y = y.reshape(1, y.size)
-        
-    # 훈련 데이터가 원-핫 벡터라면 정답 레이블의 인덱스로 반환
-    if t.size == y.size:
-        t = t.argmax(axis=1)
-             
-    batch_size = y.shape[0]
-    return -np.sum(np.log(y[np.arange(batch_size), t] + 1e-7)) / batch_size
-
-def softmax_loss(X, t):
-    y = softmax(X)
-    return cross_entropy_error(y, t)
+    if t.ndim == 1:
+        B, C = logits.shape
+        if eps > 0:
+            q = np.full((B, C), eps/(C-1), dtype=logits.dtype)
+            q[np.arange(B), t] = 1.0 - eps
+            loss = -(q * np.log(p + 1e-12)).sum(axis=1).mean()
+        else:
+            loss = -np.log(p[np.arange(B), t] + 1e-12).mean()
+    elif t.ndim == 2:
+        C = logits.shape[1]
+        if eps > 0:
+            q = (1 - eps) * t + eps * (1 - t) / (C - 1)
+        else:
+            q = t
+        loss = -(q * np.log(p + 1e-12)).sum(axis=1).mean()
+    else:
+        raise ValueError(f"Unexpected label shape: {t.shape}")
+    return float(loss)
