@@ -1,6 +1,6 @@
 # wordcnn/eval.py
 # coding: utf-8
-import argparse, json, numpy as onp, sys, os
+import argparse, json, numpy as onp, sys, os, csv
 from tqdm import trange
 from common.xp import xp, asnumpy, DTYPE
 from wordcnn.model import WordCNN
@@ -24,6 +24,13 @@ def safe_word(id2, i):
 def logsumexp(a, axis=1, keepdims=True):
     m = a.max(axis=axis, keepdims=True)
     return m + onp.log(onp.exp(a - m).sum(axis=axis, keepdims=True))
+
+def _sanitize_for_excel(s: str) -> str:
+    # (선택) 엑셀 수식 오인 방지
+    if not s: return s
+    if s[0] in "=+-@><" or s[0] == "\t":
+        return "'" + s
+    return s
 
 def main(args):
     # 1) id2word & ckpt out-dim 체크(있으면)
@@ -64,17 +71,23 @@ def main(args):
         prior = onp.log(cnt + 1.0)  # 간단 스무딩
         print(f"[prior] from={args.prior_from}  alpha={args.alpha}  nonzero={int((cnt>0).sum())}")
 
-    # 5) (선택) CSV 스트리밍 준비
-    writer = None
+    # 5) (선택) CSV 스트리밍 준비  ← 콤마 구분, 안전 인용
+    csv_writer = None
+    fp = None
     if args.dump_csv:
         os.makedirs(os.path.dirname(args.dump_csv) or ".", exist_ok=True)
-        # Excel 호환을 위해 utf-8-sig
-        fp = open(args.dump_csv, "w", encoding="utf-8-sig")
-        fp.write("idx,pred_id,pred_word,pred_prob,gt_id,gt_word,correct")
+        cols = ["idx","pred_id","pred_word","pred_prob","gt_id","gt_word","correct"]
         if args.topk > 1:
-            fp.write(",topk_ids,topk_words,topk_probs")
-        fp.write("\n")
-        writer = fp
+            cols += ["topk_ids","topk_words","topk_probs"]
+        fp = open(args.dump_csv, "w", encoding="utf-8-sig", newline="")
+        csv_writer = csv.DictWriter(
+            fp, fieldnames=cols,
+            delimiter=",",
+            quotechar='"',
+            quoting=csv.QUOTE_ALL,   # 모든 필드 인용 → 콤마/개행/따옴표 안전
+            doublequote=True
+        )
+        csv_writer.writeheader()
 
     # 6) 평가 + 예측 출력
     bs = int(args.batch)
@@ -114,7 +127,7 @@ def main(args):
             correct_topk += int(hit.sum())
             topk_ids = part
 
-        # 확률(softmax) for top-1
+        # (top-1) 확률
         log_den_full = logsumexp(logits, axis=1, keepdims=True)
         pred_prob = onp.exp(logits[onp.arange(len(pred)), pred] - log_den_full.ravel())
 
@@ -134,19 +147,30 @@ def main(args):
                 printed += 1
                 if printed >= args.show_n: break
 
-        # (선택) CSV 스트리밍 저장
-        if writer is not None:
+        # (선택) CSV 스트리밍 저장 (콤마 구분 + 안전 인용)
+        if csv_writer is not None:
             for i in range(len(pred)):
                 gi = int(ytrue[i]); pi = int(pred[i])
                 gw = safe_word(id2, gi); pw = safe_word(id2, pi)
-                ok = int(gi == pi)
+                row = {
+                    "idx": s+i,
+                    "pred_id": pi,
+                    "pred_word": _sanitize_for_excel(pw),
+                    "pred_prob": float(pred_prob[i]),
+                    "gt_id": gi,
+                    "gt_word": _sanitize_for_excel(gw),
+                    "correct": int(gi == pi),
+                }
                 if args.topk > 1:
-                    tk_ids = topk_ids[i].tolist()
+                    tk_ids   = topk_ids[i].tolist()
                     tk_words = [safe_word(id2, t) for t in tk_ids]
-                    tk_ps = topk_probs[i].tolist()
-                    writer.write(f"{s+i},{pi},{pw},{pred_prob[i]:.6f},{gi},{gw},{ok},\"{tk_ids}\",\"{tk_words}\",\"{tk_ps}\"\n")
-                else:
-                    writer.write(f"{s+i},{pi},{pw},{pred_prob[i]:.6f},{gi},{gw},{ok}\n")
+                    tk_ps    = [float(x) for x in topk_probs[i].tolist()]
+                    # 값 안의 콤마/개행 대비를 위해 JSON으로 저장(한 셀에 안전히 들어감)
+                    row["topk_ids"]   = json.dumps(tk_ids,   ensure_ascii=False)
+                    row["topk_words"] = json.dumps(tk_words, ensure_ascii=False)
+                    row["topk_probs"] = json.dumps(tk_ps,    ensure_ascii=False)
+
+                csv_writer.writerow(row)
 
         seen += (e - s)
         acc1 = correct_top1 / seen
@@ -156,8 +180,8 @@ def main(args):
         else:
             pbar.set_postfix(avg_acc=f"{acc1:.4f}", seen=seen, total=len(X))
 
-    if writer is not None:
-        writer.close()
+    if csv_writer is not None and fp is not None:
+        fp.close()
 
     msg = f"\n[EVAL] samples={len(X)}  top1_acc={correct_top1/len(X):.4f}"
     if args.topk > 1:
@@ -174,7 +198,6 @@ if __name__ == "__main__":
     ap.add_argument("--topk", type=int, default=1)
     ap.add_argument("--prior_from", default=None, help="train_y.npy 경로")
     ap.add_argument("--alpha", type=float, default=1.0, help="prior 보정 세기(0이면 미사용)")
-    # ↓↓↓ 추가: 무엇으로 인식했는지 보기용
     ap.add_argument("--show_n", type=int, default=0, help="터미널에 예측/정답 샘플 N개 출력")
     ap.add_argument("--dump_csv", default=None, help="예측 전체를 CSV로 저장(utf-8-sig)")
     args = ap.parse_args()
